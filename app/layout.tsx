@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AccessGrid — RBAC Console",
-  description: "A hands-on role-based access control console with protected routes, permission-aware actions, and server-side authorization.",
+  title: "Planora — Content Calendar",
+  description: "An interactive calendar for planning, scheduling, and managing social content.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
