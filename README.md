@@ -1,56 +1,33 @@
-# Draftly — Redux Toolkit post manager
+# TokenLab — JWT authentication demo
 
-A responsive post drafting workspace that demonstrates centralized state management with Redux Toolkit and React-Redux. Posts and publishing platforms live in normalized entity stores, while component-only UI details such as the active filter and mobile panel remain local state.
+TokenLab is a React/Next.js teaching project that demonstrates credential validation, JWT creation, secure browser storage, claim verification, protected API access, expiry, and logout.
 
 ## Run locally
 
 ```bash
-npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`.
+Open `http://localhost:5173` and use:
 
-## Redux architecture
+- Email: `learner@example.com`
+- Password: `SecurePass123!`
 
-```text
-Provider
-└── store
-    ├── posts      { ids: [], entities: {}, status, activeRequestId, error }
-    └── platforms  { ids: [], entities: {} }
-```
+Local development uses a scoped fallback signing secret. For deployment, set `JWT_SECRET` to a random value of at least 32 characters; see `.env.example`.
 
-- `createEntityAdapter` normalizes both post and platform collections.
-- `postsSlice` provides create, update, delete, hydrate, and save flows.
-- `platformsSlice` provides platform CRUD reducers and selectors.
-- Typed `useAppDispatch` and `useAppSelector` hooks keep component access type-safe.
-- Posts reference platforms by `platformIds`, avoiding duplicated platform objects.
-- Async thunks simulate API latency and persist drafts to `localStorage`.
-- Loading, saving, saved, deleting, and failure states are represented in Redux.
+## Security choices
 
-## Performance strategy
+- Tokens are signed with HMAC-SHA256 using the Web Crypto API.
+- The JWT is stored in an `HttpOnly`, `SameSite=Strict` cookie instead of `localStorage`, preventing page scripts from reading it and reducing XSS exposure.
+- Protected endpoints validate the signature, algorithm, issuer, audience, issue time, and expiry.
+- Passwords are never included in JWT claims.
+- Logout invalidates the browser cookie.
 
-- `createSelector` derives filtered drafts, category totals, and reading metrics without duplicating them in state.
-- Selector factories give each mounted workspace its own memoization cache.
-- `useDeferredValue` keeps search input responsive while a large draft list is filtered.
-- `React.memo` isolates draft cards and the editor so unrelated UI state does not render them again.
-- `useCallback` keeps the handlers passed to memoized children referentially stable.
-- The sidebar's “Selector runs” value makes recomputation visible while experimenting.
+A production system should additionally use database-backed users with hashed passwords, rate limiting, short-lived access tokens, refresh-token rotation, and server-side revocation for high-risk sessions.
 
-## Key files
+## API routes
 
-- `lib/store.ts` — store configuration and inferred Redux types
-- `lib/hooks.ts` — typed React-Redux hooks
-- `lib/features/posts/postsSlice.ts` — normalized post state, CRUD reducers, and async thunks
-- `lib/features/posts/selectors.ts` — memoized derived-state selectors
-- `lib/features/platforms/platformsSlice.ts` — normalized platform state and CRUD reducers
-- `app/providers.tsx` — client-side Redux Provider
-- `app/page.tsx` — connected post-management interface
-
-## Verification
-
-```bash
-npx tsc --noEmit
-npm run lint
-npm run build
-```
+- `POST /api/auth/login` — validates the mock account and issues the JWT cookie.
+- `GET /api/auth/me` — verifies the cookie and returns safe user/claim data.
+- `POST /api/auth/logout` — expires the cookie.
+- `GET /api/protected` — returns data only after successful token verification.

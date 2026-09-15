@@ -1,160 +1,111 @@
 "use client";
 
-import { Check, ChevronLeft, Clock3, Cloud, FilePenLine, Inbox, LoaderCircle, Menu, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Toaster } from "@/components/ui/sonner";
-import { useAppDispatch, useAppSelector, useAppStore } from "@/lib/hooks";
-import { selectAllPlatforms, type Platform, type PlatformKey } from "@/lib/features/platforms/platformsSlice";
-import { deletePost, hydratePosts, postCreated, postUpdated, savePost, selectAllPosts, selectPostById, selectPostCount, selectPostsStatus, type Post, type PostCategory } from "@/lib/features/posts/postsSlice";
-import { makeSelectFilteredPosts, makeSelectPostMetrics, selectPostCategoryCounts, type PostFilter } from "@/lib/features/posts/selectors";
+import { ArrowRight, Braces, Check, CheckCircle2, ChevronRight, Eye, EyeOff, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, LogOut, RefreshCw, Send, ShieldCheck, Terminal, UserRound } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
 
-type SaveState = "idle" | "saving" | "saved";
-type DraftToolInput = { id?: string; title?: string; content?: string; category?: PostCategory };
-type Metrics = { words: number; characters: number; readingMinutes: number };
-type ModelContext = { registerTool: (tool: { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute: (input: DraftToolInput) => unknown }, options: { signal: AbortSignal }) => void | Promise<void> };
+type Claims = { sub: string; email: string; name: string; role: string; iat: number; exp: number; iss: string; aud: string; jti: string };
+type Session = { authenticated: boolean; user?: { id: string; email: string; name: string; role: string }; claims?: Claims };
 
-const categories = ["All", "Article", "Social", "Newsletter", "Notes"] as const;
-const formatDate = (value: string) => new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
+const flow = [
+  ["01", "Credentials submitted", "The browser sends credentials over an encrypted connection."],
+  ["02", "Identity verified", "The server checks the account before creating any token."],
+  ["03", "JWT signed", "An HMAC signature protects the header and claims from tampering."],
+  ["04", "Cookie secured", "The token is stored in an HttpOnly, SameSite cookie."],
+  ["05", "Request authorized", "Protected routes verify the signature, issuer, audience, and expiry."],
+];
 
-const DraftCard = memo(function DraftCard({ draft, active, onSelect }: { draft: Post; active: boolean; onSelect: (id: string) => void }) {
-  return <button className={active ? "draft-card active" : "draft-card"} type="button" onClick={() => onSelect(draft.id)} aria-pressed={active}>
-    <div className="draft-card-top"><span className={`category-dot ${draft.category.toLowerCase()}`} /><span>{draft.category}</span><time dateTime={draft.updatedAt}>{formatDate(draft.updatedAt)}</time></div>
-    <strong>{draft.title || "Untitled draft"}</strong><p>{draft.content || "No content yet"}</p>
-  </button>;
-});
-
-const EditorPane = memo(function EditorPane({ draft, isReady, saveState, metrics, platforms, onOpenList, onCreate, onUpdate, onTogglePlatform, onSave, onDelete }: {
-  draft?: Post; isReady: boolean; saveState: SaveState; metrics: Metrics; platforms: Platform[];
-  onOpenList: () => void; onCreate: () => void; onUpdate: (changes: Partial<Pick<Post, "title" | "content" | "category" | "platformIds">>) => void;
-  onTogglePlatform: (id: PlatformKey) => void; onSave: () => void; onDelete: () => void;
-}) {
-  if (!draft) return isReady
-    ? <div className="empty-editor"><span><FilePenLine size={28} /></span><h2>Your next idea starts here</h2><p>Create a draft to begin writing.</p><button type="button" onClick={onCreate}><Plus size={17} /> New draft</button></div>
-    : <div className="loading-editor"><LoaderCircle className="spin" size={25} /><span>Opening your drafts…</span></div>;
-
-  return <div className="editor-page">
-    <div className="editor-toolbar"><button className="back-button" type="button" onClick={onOpenList}><ChevronLeft size={18} /> All drafts</button><div className={`save-indicator ${saveState}`} aria-live="polite">{saveState === "saving" ? <><LoaderCircle className="spin" size={15} /> Saving…</> : saveState === "saved" ? <><Check size={15} /> Saved</> : <><Clock3 size={15} /> Unsaved changes</>}</div><span /></div>
-    <div className="editor-content">
-      <label className="category-control">Type<select value={draft.category} onChange={(event) => onUpdate({ category: event.target.value as PostCategory })}><option>Article</option><option>Social</option><option>Newsletter</option><option>Notes</option></select></label>
-      <input className="title-input" value={draft.title} onChange={(event) => onUpdate({ title: event.target.value })} placeholder="Untitled draft" aria-label="Draft title" />
-      <div className="meta-line"><span>Created {formatDate(draft.createdAt)}</span><i /><span>{metrics.words} words</span><i /><span>{metrics.characters} characters</span>{metrics.readingMinutes > 0 && <><i /><span>{metrics.readingMinutes} min read</span></>}</div>
-      <div className="platform-row" aria-label="Publishing platforms">{platforms.map((platform) => <button key={platform.id} type="button" className={draft.platformIds.includes(platform.id) ? "selected" : ""} onClick={() => onTogglePlatform(platform.id)} aria-pressed={draft.platformIds.includes(platform.id)} style={{ "--platform-color": platform.color } as React.CSSProperties}>{platform.name}</button>)}</div>
-      <div className="paper-rule" />
-      <textarea className="content-input" value={draft.content} onChange={(event) => onUpdate({ content: event.target.value })} placeholder="Start writing. Your ideas are safe here…" aria-label="Draft content" />
-    </div>
-    <footer className="editor-footer"><p><Inbox size={16} /> Memoized selectors keep this workspace responsive as it grows.</p><div><button className="delete-button" type="button" onClick={onDelete} disabled={saveState === "saving"}><Trash2 size={17} /> Delete</button><button className="save-button" type="button" onClick={onSave} disabled={saveState === "saving"}>{saveState === "saving" ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />} Save draft</button></div></footer>
-  </div>;
-});
+const time = (seconds: number) => new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(seconds * 1000));
 
 export default function Home() {
-  const dispatch = useAppDispatch();
-  const store = useAppStore();
-  const platforms = useAppSelector(selectAllPlatforms);
-  const draftCount = useAppSelector(selectPostCount);
-  const categoryCounts = useAppSelector(selectPostCategoryCounts);
-  const requestStatus = useAppSelector(selectPostsStatus);
-  const [activeId, setActiveId] = useState("");
-  const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
-  const [filter, setFilter] = useState<PostFilter>("All");
-  const [isReady, setIsReady] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [mobileListOpen, setMobileListOpen] = useState(false);
-  const filteredSelector = useMemo(() => makeSelectFilteredPosts(), []);
-  const metricsSelector = useMemo(() => makeSelectPostMetrics(), []);
-  const filteredDrafts = useAppSelector((state) => filteredSelector(state, deferredQuery, filter));
-  const activeDraft = useAppSelector((state) => selectPostById(state, activeId));
-  const metrics = useAppSelector((state) => metricsSelector(state, activeId));
-  const saveState: SaveState = requestStatus === "saving" || requestStatus === "deleting" ? "saving" : requestStatus === "saved" ? "saved" : "idle";
+  const [session, setSession] = useState<Session | null>(null);
+  const [email, setEmail] = useState("learner@example.com");
+  const [password, setPassword] = useState("SecurePass123!");
+  const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [apiResult, setApiResult] = useState("");
+  const [activeStep, setActiveStep] = useState(0);
 
-  useEffect(() => {
-    void dispatch(hydratePosts()).unwrap().then((posts) => setActiveId(posts[0]?.id ?? "")).catch(() => {
-      toast.error("Saved drafts could not be read", { description: "A fresh Redux workspace has been opened." });
-    }).finally(() => setIsReady(true));
-  }, [dispatch]);
+  const refreshSession = async () => {
+    try {
+      const response = await fetch("/api/auth/me", { cache: "no-store" });
+      setSession(await response.json() as Session);
+    } catch { setSession({ authenticated: false }); }
+  };
 
-  useEffect(() => {
-    if (!isReady) return;
-    const modelContext = (document as Document & { modelContext?: ModelContext }).modelContext;
-    if (!modelContext?.registerTool) return;
-    const lifecycle = new AbortController();
-    const allowedCategories = ["Article", "Social", "Newsletter", "Notes"] as const;
-    const tools = [
-      {
-        name: "list_drafts", title: "List drafts", description: "List the post drafts currently saved in this browser.",
-        inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true },
-        execute: () => ({ drafts: selectAllPosts(store.getState()).map(({ id, title, category, updatedAt }) => ({ id, title: title || "Untitled draft", category, updatedAt })) }),
-      },
-      {
-        name: "create_draft", title: "Create draft", description: "Create and save a new post draft, then open it in the editor.",
-        inputSchema: { type: "object", properties: { title: { type: "string" }, content: { type: "string" }, category: { type: "string", enum: allowedCategories } }, additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false },
-        execute: async (input: DraftToolInput) => { if (input.category && !allowedCategories.includes(input.category)) throw new Error("Choose a valid draft category."); const action = postCreated(); dispatch(action); dispatch(postUpdated({ id: action.payload.id, changes: { title: input.title ?? "", content: input.content ?? "", category: input.category ?? "Article" } })); setActiveId(action.payload.id); await dispatch(savePost(action.payload.id)).unwrap(); return { created: true, id: action.payload.id }; },
-      },
-      {
-        name: "update_draft", title: "Update draft", description: "Update and save the title, content, or category of an existing draft.",
-        inputSchema: { type: "object", properties: { id: { type: "string" }, title: { type: "string" }, content: { type: "string" }, category: { type: "string", enum: allowedCategories } }, required: ["id"], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false },
-        execute: async (input: DraftToolInput) => { if (!selectPostById(store.getState(), input.id ?? "")) throw new Error("Draft not found."); if (input.category && !allowedCategories.includes(input.category)) throw new Error("Choose a valid draft category."); const changes = { ...(input.title !== undefined && { title: input.title }), ...(input.content !== undefined && { content: input.content }), ...(input.category !== undefined && { category: input.category }) }; dispatch(postUpdated({ id: input.id!, changes })); setActiveId(input.id!); const result = await dispatch(savePost(input.id!)).unwrap(); return { updated: true, id: input.id, updatedAt: result.savedAt }; },
-      },
-      {
-        name: "delete_draft", title: "Delete draft", description: "Permanently delete one locally saved draft by its ID.",
-        inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false },
-        execute: async (input: DraftToolInput) => { if (!selectPostById(store.getState(), input.id ?? "")) throw new Error("Draft not found."); await dispatch(deletePost(input.id!)).unwrap(); setActiveId(selectAllPosts(store.getState())[0]?.id ?? ""); return { deleted: true, id: input.id }; },
-      },
-    ];
-    tools.forEach((tool) => { void Promise.resolve(modelContext.registerTool(tool, { signal: lifecycle.signal })).catch(() => undefined); });
-    return () => lifecycle.abort();
-  }, [dispatch, isReady, store]);
+  useEffect(() => { void refreshSession(); }, []);
 
-  const updateActive = useCallback((changes: Partial<Pick<Post, "title" | "content" | "category" | "platformIds">>) => {
-    if (activeId) dispatch(postUpdated({ id: activeId, changes }));
-  }, [activeId, dispatch]);
-  const createDraft = useCallback(() => { const action = postCreated(); dispatch(action); setActiveId(action.payload.id); setQuery(""); setFilter("All"); setMobileListOpen(false); toast.info("Blank draft created"); }, [dispatch]);
-  const selectDraft = useCallback((id: string) => { setActiveId(id); setMobileListOpen(false); }, []);
-  const saveDraft = useCallback(async () => {
-    const current = selectPostById(store.getState(), activeId);
-    if (!current || (!current.title.trim() && !current.content.trim())) { toast.error("Add a title or some content first"); return; }
-    try { await dispatch(savePost(activeId)).unwrap(); toast.success("Draft saved from the Redux store"); }
-    catch (error) { toast.error("Draft could not be saved", { description: String(error) }); }
-  }, [activeId, dispatch, store]);
-  const deleteDraft = useCallback(async () => {
-    const current = selectPostById(store.getState(), activeId);
-    if (!current) return;
-    try { await dispatch(deletePost(activeId)).unwrap(); setActiveId(selectAllPosts(store.getState())[0]?.id ?? ""); setDeleteOpen(false); toast.success(`“${current.title || "Untitled draft"}” deleted`); }
-    catch (error) { toast.error("Draft could not be deleted", { description: String(error) }); }
-  }, [activeId, dispatch, store]);
-  const togglePlatform = useCallback((platformId: PlatformKey) => {
-    const current = selectPostById(store.getState(), activeId);
-    if (!current) return;
-    const platformIds = current.platformIds.includes(platformId) ? current.platformIds.filter((id) => id !== platformId) : [...current.platformIds, platformId];
-    dispatch(postUpdated({ id: activeId, changes: { platformIds } }));
-  }, [activeId, dispatch, store]);
-  const openList = useCallback(() => setMobileListOpen(true), []);
-  const requestDelete = useCallback(() => setDeleteOpen(true), []);
+  const login = async (event: FormEvent) => {
+    event.preventDefault(); setBusy(true); setError(""); setApiResult(""); setActiveStep(1);
+    try {
+      const response = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password, remember }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "Login failed.");
+      setActiveStep(5); await refreshSession();
+    } catch (caught) { setActiveStep(0); setError(caught instanceof Error ? caught.message : "Login failed."); }
+    finally { setBusy(false); }
+  };
 
-  return <main className="draft-app">
-    <Toaster position="top-right" />
-    <header className="app-header">
-      <a className="brand" href="#workspace" aria-label="Draftly home"><span className="brand-symbol"><FilePenLine size={19} /></span><span>draftly</span></a>
-      <div className="header-status"><Cloud size={15} /><span>Redux state · derived with memoized selectors</span></div>
-      <div className="header-actions"><button className="mobile-menu" type="button" aria-label="Show drafts" onClick={openList}><Menu size={20} /></button><span className="avatar" aria-label="Personal workspace">P</span></div>
+  const logout = async () => {
+    setBusy(true); await fetch("/api/auth/logout", { method: "POST" }); setSession({ authenticated: false }); setApiResult(""); setActiveStep(0); setBusy(false);
+  };
+
+  const callProtectedRoute = async () => {
+    setBusy(true); const response = await fetch("/api/protected", { cache: "no-store" }); const data = await response.json();
+    setApiResult(`${response.status} ${response.statusText}\n${JSON.stringify(data, null, 2)}`); setBusy(false);
+  };
+
+  const loading = session === null;
+  const authenticated = session?.authenticated === true;
+
+  return <main className="auth-lab">
+    <header className="topbar">
+      <a className="brand" href="#top" aria-label="Token Lab home"><span className="brand-mark"><ShieldCheck size={20} strokeWidth={2.2} /></span><span>Token<span>Lab</span></span></a>
+      <div className="environment"><span /> Educational sandbox</div>
+      <a className="source-link" href="#how-it-works">How it works <ArrowRight size={15} /></a>
     </header>
-    <section className="workspace" id="workspace">
-      <aside className="rail" aria-label="Workspace navigation"><div className="rail-mark"><Sparkles size={18} /></div><nav><button className="active" type="button" aria-label="Drafts"><FilePenLine size={19} /><span>Drafts</span></button></nav><div className="rail-footer"><span>PD</span></div></aside>
-      <aside className={mobileListOpen ? "draft-sidebar mobile-open" : "draft-sidebar"}>
-        <div className="sidebar-top">
-          <div className="title-row"><div><p className="eyebrow">Memoized workspace</p><h1>Your drafts</h1></div><button className="close-list" type="button" aria-label="Close drafts" onClick={() => setMobileListOpen(false)}><X size={19} /></button></div>
-          <button className="new-draft" type="button" onClick={createDraft}><Plus size={17} /> New draft</button>
-          <label className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search drafts" aria-label="Search drafts" />{query && <button type="button" aria-label="Clear search" onClick={() => setQuery("")}><X size={15} /></button>}</label>
-          <div className="filter-row" aria-label="Filter drafts">{categories.map((item) => <button key={item} className={filter === item ? "active" : ""} type="button" onClick={() => setFilter(item)} aria-pressed={filter === item}>{item}<span>{categoryCounts[item]}</span></button>)}</div>
-        </div>
-        <div className="draft-list" aria-live="polite">
-          {!isReady ? Array.from({ length: 3 }).map((_, index) => <div className="draft-skeleton" key={index}><span /><span /><span /></div>) : filteredDrafts.length ? filteredDrafts.map((draft) => <DraftCard key={draft.id} draft={draft} active={draft.id === activeId} onSelect={selectDraft} />) : <div className="empty-list"><Search size={22} /><strong>No drafts found</strong><p>Try another search or start a new draft.</p></div>}
-        </div><p className="draft-count"><span>{draftCount} draft{draftCount === 1 ? "" : "s"}</span><span title="The filtered selector only recomputes when its inputs change">Selector runs: {filteredSelector.recomputations()}</span></p>
-      </aside>
-      <section className="editor-shell"><EditorPane draft={activeDraft} isReady={isReady} saveState={saveState} metrics={metrics} platforms={platforms} onOpenList={openList} onCreate={createDraft} onUpdate={updateActive} onTogglePlatform={togglePlatform} onSave={saveDraft} onDelete={requestDelete} /></section>
+
+    <section className="hero" id="top">
+      <div className="hero-copy">
+        <p className="kicker"><LockKeyhole size={15} /> JWT authentication lab</p>
+        <h1>Sign in once.<br /><em>Stay verified.</em></h1>
+        <p className="intro">A hands-on demonstration of stateless authentication—from credential validation to signed claims and protected API access.</p>
+        <div className="trust-list"><span><Check size={15} /> HMAC-SHA256 signature</span><span><Check size={15} /> HttpOnly cookie storage</span><span><Check size={15} /> Expiring, server-verified sessions</span></div>
+      </div>
+
+      <section className="auth-card" aria-labelledby="auth-title">
+        {loading ? <div className="card-loading"><LoaderCircle className="spin" size={28} /><span>Checking your session…</span></div>
+        : authenticated && session.user && session.claims ? <div className="session-view">
+          <div className="success-icon"><CheckCircle2 size={25} /></div><p className="card-eyebrow">Session active</p><h2 id="auth-title">Welcome, {session.user.name.split(" ")[0]}</h2>
+          <p className="card-copy">Your signed token was verified by the server. The browser never exposes it to page scripts.</p>
+          <div className="identity-row"><span><UserRound size={18} /></span><div><strong>{session.user.name}</strong><small>{session.user.email}</small></div><b>{session.user.role}</b></div>
+          <div className="session-actions"><button className="primary-button" type="button" onClick={callProtectedRoute} disabled={busy}><Send size={16} /> Test protected API</button><button className="icon-button" type="button" onClick={() => void refreshSession()} aria-label="Refresh session"><RefreshCw size={18} /></button></div>
+          {apiResult && <pre className="api-result" aria-live="polite">{apiResult}</pre>}
+          <button className="logout-button" type="button" onClick={logout} disabled={busy}><LogOut size={15} /> End session</button>
+        </div> : <form onSubmit={login}>
+          <p className="card-eyebrow">Secure access</p><h2 id="auth-title">Welcome back</h2><p className="card-copy">Use the demo credentials below to issue a signed token.</p>
+          <label><span>Email address</span><div className="input-shell"><UserRound size={17} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></div></label>
+          <label><span>Password</span><div className="input-shell"><KeyRound size={17} /><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>
+          <label className="remember"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /><span>Keep me signed in for 7 days</span></label>
+          {error && <p className="error-message" role="alert">{error}</p>}
+          <button className="primary-button login-button" type="submit" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Fingerprint size={18} />}{busy ? "Signing token…" : "Sign in securely"}<ChevronRight size={18} /></button>
+          <div className="demo-note"><Terminal size={16} /><span><strong>Demo account</strong>learner@example.com · SecurePass123!</span></div>
+        </form>}
+      </section>
     </section>
-    <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}><AlertDialogContent className="delete-dialog"><AlertDialogHeader><AlertDialogTitle>Delete this draft?</AlertDialogTitle><AlertDialogDescription>“{activeDraft?.title || "Untitled draft"}” will be permanently removed from this device.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Keep draft</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={deleteDraft}>Delete draft</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+
+    <section className="flow-section" id="how-it-works">
+      <div className="section-heading"><div><p className="kicker">Request lifecycle</p><h2>What happens after “Sign in”</h2></div><p>Each stage has a single responsibility. The server remains the source of truth.</p></div>
+      <div className="flow-grid">{flow.map(([number, title, description], index) => <article className={activeStep > index ? "flow-card complete" : "flow-card"} key={number}><div className="flow-number">{activeStep > index ? <Check size={17} /> : number}</div><div><h3>{title}</h3><p>{description}</p></div>{index < flow.length - 1 && <ChevronRight className="flow-arrow" size={18} />}</article>)}</div>
+    </section>
+
+    <section className="token-section">
+      <div className="token-copy"><p className="kicker"><Braces size={15} /> Anatomy of a JWT</p><h2>Three parts. One verifiable identity.</h2><p>The encoded data is readable, not encrypted. Trust comes from the signature, so secrets and passwords never belong in the payload.</p><div className="legend"><span><i className="header-dot" /> Header</span><span><i className="payload-dot" /> Payload</span><span><i className="signature-dot" /> Signature</span></div></div>
+      <div className="token-console"><div className="console-bar"><span /><span /><span /><b>verified-token.jwt</b></div><div className="token-string" aria-label="Example JSON Web Token"><span>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9</span>.<span>eyJzdWIiOiJ1c3JfMTAwMSIsInJvbGUiOiJsZWFybmVyIn0</span>.<span>m7Yw8rAZQvN0N4bK2saPl9KJ8nVw</span></div><dl><div><dt>Algorithm</dt><dd>HS256</dd></div><div><dt>Issuer</dt><dd>token-lab</dd></div><div><dt>Audience</dt><dd>token-lab-client</dd></div><div><dt>Lifetime</dt><dd>{remember ? "7 days" : "15 minutes"}</dd></div></dl></div>
+    </section>
+
+    {authenticated && session.claims && <section className="claims-section"><div className="section-heading"><div><p className="kicker">Decoded safely</p><h2>Current token claims</h2></div><p>Returned only after server-side signature validation.</p></div><div className="claims-grid"><div><span>Subject</span><strong>{session.claims.sub}</strong></div><div><span>Role</span><strong>{session.claims.role}</strong></div><div><span>Issued at</span><strong>{time(session.claims.iat)}</strong></div><div><span>Expires</span><strong>{time(session.claims.exp)}</strong></div></div></section>}
+    <footer><span><ShieldCheck size={16} /> TokenLab</span><p>Built for learning. Mock credentials only—never reuse them in production.</p></footer>
   </main>;
 }

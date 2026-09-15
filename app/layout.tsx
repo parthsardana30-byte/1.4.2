@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { AppProviders } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Draftly — Optimized Redux workspace",
-  description: "A responsive post workspace powered by normalized Redux state, memoized selectors, and efficient React rendering.",
+  title: "TokenLab — JWT Authentication Demo",
+  description: "A secure, hands-on demonstration of JWT login, signed claims, session cookies, and protected API routes.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
@@ -18,7 +17,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased"><AppProviders>{children}</AppProviders></body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
