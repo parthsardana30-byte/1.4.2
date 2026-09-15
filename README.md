@@ -4,7 +4,7 @@ Planora is an interactive React calendar for scheduling and managing social medi
 
 ## Version
 
-`1.4.1`
+`1.4.2`
 
 ## Features
 
@@ -15,6 +15,8 @@ Planora is an interactive React calendar for scheduling and managing social medi
 - Keyboard rescheduling with `Shift + Left/Right Arrow`
 - Responsive layout for desktop and mobile
 - WebMCP tools for listing, creating, and moving calendar posts
+- Memoized post cards, day columns, and derived calendar data
+- Unit and interaction tests with Vitest and React Testing Library
 
 ## Run locally
 
@@ -24,6 +26,12 @@ npm run dev
 ```
 
 Open `http://localhost:5173`.
+
+## Testing
+
+```bash
+npm test
+```
 
 ## Production build
 
