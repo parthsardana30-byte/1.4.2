@@ -4,7 +4,7 @@ export type PostStatus = "Scheduled" | "Draft" | "Review";
 export type Channel = "Instagram" | "LinkedIn" | "X / Twitter";
 export type CalendarPost = { id: string; title: string; caption: string; date: string; time: string; channel: Channel; status: PostStatus; tone: string };
 
-const initialState: CalendarPost[] = [
+export const initialPosts: CalendarPost[] = [
   { id: "p1", date: "2026-09-14", time: "09:30", title: "Monday momentum", caption: "Three small ways to begin the week with focus.", channel: "Instagram", tone: "coral", status: "Scheduled" },
   { id: "p2", date: "2026-09-14", time: "14:00", title: "Founder note: why focus wins", caption: "A short reflection from the team.", channel: "LinkedIn", tone: "blue", status: "Draft" },
   { id: "p3", date: "2026-09-15", time: "11:00", title: "Product tips carousel", caption: "Five shortcuts for a faster workflow.", channel: "Instagram", tone: "violet", status: "Scheduled" },
@@ -17,7 +17,7 @@ const initialState: CalendarPost[] = [
 
 const postsSlice = createSlice({
   name: "posts",
-  initialState,
+  initialState: initialPosts,
   reducers: {
     savePost: (state, action: PayloadAction<CalendarPost>) => {
       const index = state.findIndex((post) => post.id === action.payload.id);
@@ -32,6 +32,9 @@ const postsSlice = createSlice({
 });
 
 export const { savePost, movePost, deletePost } = postsSlice.actions;
-export const calendarStore = configureStore({ reducer: { posts: postsSlice.reducer } });
+export const postsReducer = postsSlice.reducer;
+export const createCalendarStore = (posts: CalendarPost[] = initialPosts) =>
+  configureStore({ reducer: { posts: postsReducer }, preloadedState: { posts } });
+export const calendarStore = createCalendarStore();
 export type RootState = ReturnType<typeof calendarStore.getState>;
 export type AppDispatch = typeof calendarStore.dispatch;

@@ -2,7 +2,7 @@
 
 import { Bell, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, Grid2X2, GripVertical, Plus, Search, Settings, Sparkles, Trash2 } from "lucide-react";
 import { addDays, addMonths, addWeeks, format, isSameDay, isSameMonth, parseISO, startOfMonth, startOfWeek } from "date-fns";
-import { DragEvent, FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { DragEvent, FormEvent, KeyboardEvent, memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Provider, useDispatch, useSelector } from "react-redux";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,7 +16,7 @@ const toneByChannel: Record<Channel, string> = { Instagram: "coral", LinkedIn: "
 
 function iso(date: Date) { return format(date, "yyyy-MM-dd"); }
 
-function PostCard({ post, openEditor }: { post: CalendarPost; openEditor: (post: CalendarPost) => void }) {
+const PostCard = memo(function PostCard({ post, openEditor }: { post: CalendarPost; openEditor: (post: CalendarPost) => void }) {
   const dispatch = useDispatch<AppDispatch>();
   const keyboardMove = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openEditor(post); return; }
@@ -30,6 +30,52 @@ function PostCard({ post, openEditor }: { post: CalendarPost; openEditor: (post:
     <p>{post.channel}</p>
     <GripVertical className="drag-grip" aria-hidden="true" />
   </article>;
+});
+
+const EMPTY_POSTS: CalendarPost[] = [];
+
+type DayColumnProps = {
+  date: Date;
+  anchor: Date;
+  posts: CalendarPost[];
+  onCreate: (date: string) => void;
+  onDropPost: (event: DragEvent, date: string) => void;
+  onEdit: (post: CalendarPost) => void;
+  onSelectDay: (date: Date) => void;
+};
+
+const DayColumn = memo(function DayColumn({ date, anchor, posts, onCreate, onDropPost, onEdit, onSelectDay }: DayColumnProps) {
+  const dateIso = iso(date);
+  return <div aria-label={format(date, "EEEE, MMMM d, yyyy")} className={`day-column ${isSameDay(date, new Date(2026, 8, 16)) ? "today" : ""} ${!isSameMonth(date, anchor) ? "outside" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => onDropPost(event, dateIso)}>
+    <button className="day-head" onClick={() => onSelectDay(date)}><span>{format(date, "EEE").toUpperCase()}</span><strong>{format(date, "d")}</strong></button>
+    <div className="day-body">{posts.map((post) => <PostCard key={post.id} post={post} openEditor={onEdit} />)}<button className="empty-day" onClick={() => onCreate(dateIso)}><Plus />Add post</button></div>
+  </div>;
+}, (previous, next) =>
+  previous.date.getTime() === next.date.getTime()
+  && isSameMonth(previous.anchor, next.anchor)
+  && previous.posts.length === next.posts.length
+  && previous.posts.every((post, index) => post === next.posts[index])
+  && previous.onCreate === next.onCreate
+  && previous.onDropPost === next.onDropPost
+  && previous.onEdit === next.onEdit
+  && previous.onSelectDay === next.onSelectDay
+);
+
+export function deriveCalendarData(posts: CalendarPost[], query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = normalizedQuery
+    ? posts.filter((post) => `${post.title} ${post.channel} ${post.status}`.toLowerCase().includes(normalizedQuery))
+    : posts;
+  const postsByDay = new Map<string, CalendarPost[]>();
+  for (const post of filtered) {
+    const dayPosts = postsByDay.get(post.date);
+    if (dayPosts) dayPosts.push(post);
+    else postsByDay.set(post.date, [post]);
+  }
+  for (const dayPosts of postsByDay.values()) dayPosts.sort((a, b) => a.time.localeCompare(b.time));
+  const counts: Record<PostStatus, number> = { Scheduled: 0, Draft: 0, Review: 0 };
+  for (const post of posts) counts[post.status] += 1;
+  return { filtered, postsByDay, counts };
 }
 
 function PostDialog({ open, post, defaultDate, onClose }: { open: boolean; post: CalendarPost | null; defaultDate: string; onClose: () => void }) {
@@ -50,7 +96,7 @@ function PostDialog({ open, post, defaultDate, onClose }: { open: boolean; post:
   </DialogContent></Dialog>;
 }
 
-function Planner() {
+export function Planner() {
   const posts = useSelector((state: RootState) => state.posts);
   const dispatch = useDispatch<AppDispatch>();
   const [anchor, setAnchor] = useState(new Date(2026, 8, 16));
@@ -84,12 +130,13 @@ function Planner() {
     const monthStart = startOfMonth(anchor); const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
     return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
   }, [anchor, view]);
-  const filtered = posts.filter((post) => `${post.title} ${post.channel} ${post.status}`.toLowerCase().includes(query.toLowerCase()));
-  const counts = { Scheduled: posts.filter((p) => p.status === "Scheduled").length, Draft: posts.filter((p) => p.status === "Draft").length, Review: posts.filter((p) => p.status === "Review").length };
-  const shift = (amount: number) => setAnchor(view === "month" ? addMonths(anchor, amount) : view === "week" ? addWeeks(anchor, amount) : addDays(anchor, amount));
+  const { filtered, postsByDay, counts } = useMemo(() => deriveCalendarData(posts, query), [posts, query]);
+  const shift = useCallback((amount: number) => setAnchor((current) => view === "month" ? addMonths(current, amount) : view === "week" ? addWeeks(current, amount) : addDays(current, amount)), [view]);
   const title = view === "month" ? format(anchor, "MMMM yyyy") : view === "day" ? format(anchor, "MMMM d, yyyy") : format(visibleDays[0], "MMMM yyyy");
   const range = view === "month" ? format(anchor, "MMMM yyyy") : view === "day" ? format(anchor, "EEEE, MMM d") : `${format(visibleDays[0], "MMM d")}–${format(visibleDays[6], "d")}`;
-  const drop = (event: DragEvent, date: string) => { event.preventDefault(); const id = event.dataTransfer.getData("text/post-id"); if (id) dispatch(movePost({ id, date })); };
+  const drop = useCallback((event: DragEvent, date: string) => { event.preventDefault(); const id = event.dataTransfer.getData("text/post-id"); if (id) dispatch(movePost({ id, date })); }, [dispatch]);
+  const createPost = useCallback((date: string) => setCreateDate(date), []);
+  const selectDay = useCallback((date: Date) => { setAnchor(date); if (view === "month") setView("day"); }, [view]);
 
   return <main className="planner-shell">
     <aside className="rail"><a className="brand" href="#"><span><Sparkles size={18} /></span><b>Planora</b></a><nav aria-label="Main navigation"><a className="active" href="#"><CalendarDays />Calendar</a><a href="#"><Grid2X2 />Content library</a></nav><div className="rail-tip"><Clock3 /><p><b>Quick move</b>Drag a card to a new day, or focus it and press Shift + ← / →.</p></div><div className="rail-bottom"><a href="#"><Settings />Settings</a><button className="profile"><span>PS</span><div><b>Parth Shah</b><small>Content team</small></div><ChevronDown /></button></div></aside>
@@ -97,10 +144,7 @@ function Planner() {
       <div className="planner-content"><div className="page-heading"><div><p>CONTENT CALENDAR</p><h1>{title}</h1></div><div className="heading-actions"><button className="today-button" onClick={() => setAnchor(new Date(2026, 8, 16))}>Today</button><div className="stepper"><button onClick={() => shift(-1)} aria-label={`Previous ${view}`}><ChevronLeft /></button><button onClick={() => shift(1)} aria-label={`Next ${view}`}><ChevronRight /></button></div><div className="view-picker"><button className="view-button" onClick={() => setViewMenu(!viewMenu)} aria-haspopup="menu" aria-expanded={viewMenu}>{view[0].toUpperCase() + view.slice(1)} <ChevronDown /></button>{viewMenu && <div className="view-menu" role="menu">{(["day", "week", "month"] as View[]).map((item) => <button key={item} role="menuitem" className={view === item ? "selected" : ""} onClick={() => { setView(item); setViewMenu(false); }}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>}</div></div></div>
         <div className="summary-strip"><div><span className="summary-dot scheduled" /><b>{counts.Scheduled}</b><small>Scheduled</small></div><div><span className="summary-dot draft" /><b>{counts.Draft}</b><small>Drafts</small></div><div><span className="summary-dot review" /><b>{counts.Review}</b><small>Needs review</small></div><p>{range}</p></div>
         <section className={`calendar-board ${view}-view`} aria-label={`${view} content calendar`}><div className="calendar-grid">
-          {visibleDays.map((date) => { const dateIso = iso(date); const dayPosts = filtered.filter((post) => post.date === dateIso).sort((a, b) => a.time.localeCompare(b.time)); return <div className={`day-column ${isSameDay(date, new Date(2026, 8, 16)) ? "today" : ""} ${!isSameMonth(date, anchor) ? "outside" : ""}`} key={dateIso} onDragOver={(event) => event.preventDefault()} onDrop={(event) => drop(event, dateIso)}>
-            <button className="day-head" onClick={() => { setAnchor(date); if (view === "month") setView("day"); }}><span>{format(date, "EEE").toUpperCase()}</span><strong>{format(date, "d")}</strong></button>
-            <div className="day-body">{dayPosts.map((post) => <PostCard key={post.id} post={post} openEditor={setEditing} />)}<button className="empty-day" onClick={() => setCreateDate(dateIso)}><Plus />Add post</button></div>
-          </div>; })}
+          {visibleDays.map((date) => <DayColumn key={iso(date)} date={date} anchor={anchor} posts={postsByDay.get(iso(date)) ?? EMPTY_POSTS} onCreate={createPost} onDropPost={drop} onEdit={setEditing} onSelectDay={selectDay} />)}
         </div></section>
         {query && filtered.length === 0 && <div className="no-results"><Search /><h2>No posts found</h2><p>Try another title, channel, or status.</p></div>}
       </div>
