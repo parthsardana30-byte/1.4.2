@@ -1,6 +1,6 @@
 {
-  "name": "accessgrid-rbac",
-  "version": "1.3.2",
+  "name": "planora-content-calendar",
+  "version": "1.4.1",
   "private": true,
   "engines": {
     "node": ">=22.13.0"

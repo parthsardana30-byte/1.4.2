@@ -1,10 +1,20 @@
-# AccessGrid — RBAC Console
+# Planora — Content Calendar
 
-AccessGrid is a React/Next.js teaching project for role-based access control. It demonstrates JWT authentication, protected React Router views, centralized role permissions, permission-aware UI, and server-side authorization with clear `401` and `403` responses.
+Planora is an interactive React calendar for scheduling and managing social media posts. It maps structured post data to day, week, and month layouts and keeps all calendar interactions synchronized through Redux Toolkit.
 
 ## Version
 
-`1.3.2`
+`1.4.1`
+
+## Features
+
+- Day, week, and month calendar views
+- Create, edit, delete, and search posts
+- Schedule by date, time, channel, and workflow status
+- Drag posts between days to reschedule them
+- Keyboard rescheduling with `Shift + Left/Right Arrow`
+- Responsive layout for desktop and mobile
+- WebMCP tools for listing, creating, and moving calendar posts
 
 ## Run locally
 
@@ -13,23 +23,14 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` and select a demo role. Credentials are filled automatically:
+Open `http://localhost:5173`.
 
-- Administrator: `admin@accessgrid.dev` / `Admin123!`
-- Content editor: `editor@accessgrid.dev` / `Editor123!`
-- Read-only viewer: `viewer@accessgrid.dev` / `Viewer123!`
+## Production build
 
-## RBAC model
+```bash
+npm run build
+```
 
-- **Admin** — full access, including team and role management.
-- **Editor** — view, create, edit, and publish content.
-- **Viewer** — read-only access to content and analytics.
+## Technology
 
-Roles and permissions are defined in `lib/rbac.ts`. Client-side route guards improve the experience, while the protected API repeats authorization checks on the server so hidden UI is never treated as the security boundary.
-
-## Security notes
-
-- JWTs are signed with HMAC-SHA256 using the Web Crypto API.
-- Tokens are stored in `HttpOnly`, `SameSite=Strict` cookies.
-- Protected endpoints validate the signature, algorithm, issuer, audience, issue time, expiry, role, and requested permission.
-- Demo passwords are for teaching only. Production systems should use hashed credentials, persistent users, rate limiting, token rotation, and revocation.
+React 19, TypeScript, Redux Toolkit, date-fns, Vinext, Tailwind CSS, Radix UI, and Lucide icons.
