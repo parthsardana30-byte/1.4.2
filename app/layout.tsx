@@ -3,8 +3,8 @@ import "./globals.css";
 import { AppProviders } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Draftly — Your post draft workspace",
-  description: "Create, edit, save, and organize post drafts in a focused local workspace.",
+  title: "Draftly — Optimized Redux workspace",
+  description: "A responsive post workspace powered by normalized Redux state, memoized selectors, and efficient React rendering.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

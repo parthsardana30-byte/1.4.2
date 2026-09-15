@@ -1,22 +1,56 @@
-# Postflow — Multi-platform post composer
+# Draftly — Redux Toolkit post manager
 
-A responsive React interface for composing one social post across X, Instagram, LinkedIn, and Facebook. It validates character, hashtag, and media limits in real time and shows a platform-specific preview.
+A responsive post drafting workspace that demonstrates centralized state management with Redux Toolkit and React-Redux. Posts and publishing platforms live in normalized entity stores, while component-only UI details such as the active filter and mobile panel remain local state.
 
-## Run in VS Code
+## Run locally
 
-1. Open this folder in VS Code.
-2. Open **Terminal → New Terminal**.
-3. Run `npm install` if dependencies are not already present.
-4. Run `npm run dev`.
-5. Open `http://localhost:5173` in Chrome or Edge.
+```bash
+npm install
+npm run dev
+```
 
-## Features
+Open `http://localhost:5173`.
 
-- Multi-platform selection
-- Live character counts and progress bars
-- Platform-specific character, hashtag, and media validation
-- Image/video attachment selection and removal
-- Per-platform post previews
-- Accessible controls, keyboard focus states, and responsive layouts
+## Redux architecture
 
-The interface is a front-end demonstration. “Save draft” and “Add to queue” provide UI confirmation but do not connect to a publishing backend.
+```text
+Provider
+└── store
+    ├── posts      { ids: [], entities: {}, status, activeRequestId, error }
+    └── platforms  { ids: [], entities: {} }
+```
+
+- `createEntityAdapter` normalizes both post and platform collections.
+- `postsSlice` provides create, update, delete, hydrate, and save flows.
+- `platformsSlice` provides platform CRUD reducers and selectors.
+- Typed `useAppDispatch` and `useAppSelector` hooks keep component access type-safe.
+- Posts reference platforms by `platformIds`, avoiding duplicated platform objects.
+- Async thunks simulate API latency and persist drafts to `localStorage`.
+- Loading, saving, saved, deleting, and failure states are represented in Redux.
+
+## Performance strategy
+
+- `createSelector` derives filtered drafts, category totals, and reading metrics without duplicating them in state.
+- Selector factories give each mounted workspace its own memoization cache.
+- `useDeferredValue` keeps search input responsive while a large draft list is filtered.
+- `React.memo` isolates draft cards and the editor so unrelated UI state does not render them again.
+- `useCallback` keeps the handlers passed to memoized children referentially stable.
+- The sidebar's “Selector runs” value makes recomputation visible while experimenting.
+
+## Key files
+
+- `lib/store.ts` — store configuration and inferred Redux types
+- `lib/hooks.ts` — typed React-Redux hooks
+- `lib/features/posts/postsSlice.ts` — normalized post state, CRUD reducers, and async thunks
+- `lib/features/posts/selectors.ts` — memoized derived-state selectors
+- `lib/features/platforms/platformsSlice.ts` — normalized platform state and CRUD reducers
+- `app/providers.tsx` — client-side Redux Provider
+- `app/page.tsx` — connected post-management interface
+
+## Verification
+
+```bash
+npx tsc --noEmit
+npm run lint
+npm run build
+```
