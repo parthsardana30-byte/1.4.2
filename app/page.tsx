@@ -1,111 +1,168 @@
 "use client";
 
-import { ArrowRight, Braces, Check, CheckCircle2, ChevronRight, Eye, EyeOff, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, LogOut, RefreshCw, Send, ShieldCheck, Terminal, UserRound } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import {
+  BarChart3, Check, ChevronRight, CircleAlert, FilePenLine, FileText, KeyRound,
+  LayoutDashboard, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, Sparkles,
+  UserCog, Users, X,
+} from "lucide-react";
+import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
+import { HashRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { can, Permission, roleLabels, rolePermissions, Role } from "@/lib/rbac";
 
-type Claims = { sub: string; email: string; name: string; role: string; iat: number; exp: number; iss: string; aud: string; jti: string };
-type Session = { authenticated: boolean; user?: { id: string; email: string; name: string; role: string }; claims?: Claims };
+type User = { id: string; email: string; name: string; role: Role };
+type Session = { authenticated: boolean; user?: User };
 
-const flow = [
-  ["01", "Credentials submitted", "The browser sends credentials over an encrypted connection."],
-  ["02", "Identity verified", "The server checks the account before creating any token."],
-  ["03", "JWT signed", "An HMAC signature protects the header and claims from tampering."],
-  ["04", "Cookie secured", "The token is stored in an HttpOnly, SameSite cookie."],
-  ["05", "Request authorized", "Protected routes verify the signature, issuer, audience, and expiry."],
+const demos: Record<Role, { email: string; password: string; initials: string; summary: string }> = {
+  admin: { email: "admin@accessgrid.dev", password: "Admin123!", initials: "MC", summary: "Full access, including user administration" },
+  editor: { email: "editor@accessgrid.dev", password: "Editor123!", initials: "JL", summary: "Create, edit, and publish content" },
+  viewer: { email: "viewer@accessgrid.dev", password: "Viewer123!", initials: "SR", summary: "Read-only access to content and analytics" },
+};
+
+const navigation: { to: string; label: string; icon: typeof LayoutDashboard; permission: Permission }[] = [
+  { to: "/dashboard", label: "Overview", icon: LayoutDashboard, permission: "dashboard.view" },
+  { to: "/content", label: "Content", icon: FileText, permission: "content.view" },
+  { to: "/users", label: "Team access", icon: Users, permission: "users.view" },
+  { to: "/analytics", label: "Analytics", icon: BarChart3, permission: "analytics.view" },
 ];
 
-const time = (seconds: number) => new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(seconds * 1000));
+function initials(name: string) { return name.split(" ").map((part) => part[0]).join("").slice(0, 2); }
 
-export default function Home() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [email, setEmail] = useState("learner@example.com");
-  const [password, setPassword] = useState("SecurePass123!");
-  const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(false);
+function Login({ onLogin }: { onLogin: (user: User) => void }) {
+  const [role, setRole] = useState<Role>("admin");
+  const [email, setEmail] = useState(demos.admin.email);
+  const [password, setPassword] = useState(demos.admin.password);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [apiResult, setApiResult] = useState("");
-  const [activeStep, setActiveStep] = useState(0);
+  const navigate = useNavigate();
 
-  const refreshSession = async () => {
-    try {
-      const response = await fetch("/api/auth/me", { cache: "no-store" });
-      setSession(await response.json() as Session);
-    } catch { setSession({ authenticated: false }); }
+  const chooseRole = (nextRole: Role) => {
+    setRole(nextRole); setEmail(demos[nextRole].email); setPassword(demos[nextRole].password); setError("");
   };
-
-  useEffect(() => { void refreshSession(); }, []);
-
-  const login = async (event: FormEvent) => {
-    event.preventDefault(); setBusy(true); setError(""); setApiResult(""); setActiveStep(1);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setBusy(true); setError("");
     try {
-      const response = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password, remember }) });
-      const data = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(data.error || "Login failed.");
-      setActiveStep(5); await refreshSession();
-    } catch (caught) { setActiveStep(0); setError(caught instanceof Error ? caught.message : "Login failed."); }
+      const response = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password }) });
+      const data = await response.json() as { error?: string; user?: User };
+      if (!response.ok || !data.user) throw new Error(data.error || "Sign in failed.");
+      onLogin(data.user); navigate("/dashboard", { replace: true });
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Sign in failed."); }
     finally { setBusy(false); }
   };
 
-  const logout = async () => {
-    setBusy(true); await fetch("/api/auth/logout", { method: "POST" }); setSession({ authenticated: false }); setApiResult(""); setActiveStep(0); setBusy(false);
-  };
-
-  const callProtectedRoute = async () => {
-    setBusy(true); const response = await fetch("/api/protected", { cache: "no-store" }); const data = await response.json();
-    setApiResult(`${response.status} ${response.statusText}\n${JSON.stringify(data, null, 2)}`); setBusy(false);
-  };
-
-  const loading = session === null;
-  const authenticated = session?.authenticated === true;
-
-  return <main className="auth-lab">
-    <header className="topbar">
-      <a className="brand" href="#top" aria-label="Token Lab home"><span className="brand-mark"><ShieldCheck size={20} strokeWidth={2.2} /></span><span>Token<span>Lab</span></span></a>
-      <div className="environment"><span /> Educational sandbox</div>
-      <a className="source-link" href="#how-it-works">How it works <ArrowRight size={15} /></a>
-    </header>
-
-    <section className="hero" id="top">
-      <div className="hero-copy">
-        <p className="kicker"><LockKeyhole size={15} /> JWT authentication lab</p>
-        <h1>Sign in once.<br /><em>Stay verified.</em></h1>
-        <p className="intro">A hands-on demonstration of stateless authentication—from credential validation to signed claims and protected API access.</p>
-        <div className="trust-list"><span><Check size={15} /> HMAC-SHA256 signature</span><span><Check size={15} /> HttpOnly cookie storage</span><span><Check size={15} /> Expiring, server-verified sessions</span></div>
+  return <main className="login-page">
+    <section className="login-story">
+      <a className="wordmark light" href="#/login"><span><ShieldCheck size={21} /></span> AccessGrid</a>
+      <div className="story-copy"><p className="eyebrow"><LockKeyhole size={15} /> RBAC learning environment</p><h1>One workspace.<br /><em>Three levels of access.</em></h1><p>Explore how roles become permissions, how protected routes respond, and why the server always makes the final authorization decision.</p></div>
+      <div className="policy-preview"><div><span>AUTHORIZATION POLICY</span><Badge>ENFORCED</Badge></div><code>role → permissions → protected resource</code><div className="policy-path"><span>Identity</span><ChevronRight /><span>Role</span><ChevronRight /><span>Decision</span></div></div>
+    </section>
+    <section className="login-panel"><form onSubmit={submit} className="login-form"><p className="eyebrow dark">Demo access</p><h2>Choose a role to continue</h2><p className="form-intro">Each account reveals a different set of routes and actions.</p>
+      <div className="role-picker" role="radiogroup" aria-label="Demo role">
+        {(["admin", "editor", "viewer"] as Role[]).map((item) => <button key={item} type="button" role="radio" aria-checked={role === item} className={role === item ? "role-option active" : "role-option"} onClick={() => chooseRole(item)}><span className={`role-avatar ${item}`}>{demos[item].initials}</span><span><strong>{roleLabels[item]}</strong><small>{demos[item].summary}</small></span>{role === item && <Check size={17} />}</button>)}
       </div>
-
-      <section className="auth-card" aria-labelledby="auth-title">
-        {loading ? <div className="card-loading"><LoaderCircle className="spin" size={28} /><span>Checking your session…</span></div>
-        : authenticated && session.user && session.claims ? <div className="session-view">
-          <div className="success-icon"><CheckCircle2 size={25} /></div><p className="card-eyebrow">Session active</p><h2 id="auth-title">Welcome, {session.user.name.split(" ")[0]}</h2>
-          <p className="card-copy">Your signed token was verified by the server. The browser never exposes it to page scripts.</p>
-          <div className="identity-row"><span><UserRound size={18} /></span><div><strong>{session.user.name}</strong><small>{session.user.email}</small></div><b>{session.user.role}</b></div>
-          <div className="session-actions"><button className="primary-button" type="button" onClick={callProtectedRoute} disabled={busy}><Send size={16} /> Test protected API</button><button className="icon-button" type="button" onClick={() => void refreshSession()} aria-label="Refresh session"><RefreshCw size={18} /></button></div>
-          {apiResult && <pre className="api-result" aria-live="polite">{apiResult}</pre>}
-          <button className="logout-button" type="button" onClick={logout} disabled={busy}><LogOut size={15} /> End session</button>
-        </div> : <form onSubmit={login}>
-          <p className="card-eyebrow">Secure access</p><h2 id="auth-title">Welcome back</h2><p className="card-copy">Use the demo credentials below to issue a signed token.</p>
-          <label><span>Email address</span><div className="input-shell"><UserRound size={17} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required /></div></label>
-          <label><span>Password</span><div className="input-shell"><KeyRound size={17} /><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /><button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>
-          <label className="remember"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /><span>Keep me signed in for 7 days</span></label>
-          {error && <p className="error-message" role="alert">{error}</p>}
-          <button className="primary-button login-button" type="submit" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Fingerprint size={18} />}{busy ? "Signing token…" : "Sign in securely"}<ChevronRight size={18} /></button>
-          <div className="demo-note"><Terminal size={16} /><span><strong>Demo account</strong>learner@example.com · SecurePass123!</span></div>
-        </form>}
-      </section>
-    </section>
-
-    <section className="flow-section" id="how-it-works">
-      <div className="section-heading"><div><p className="kicker">Request lifecycle</p><h2>What happens after “Sign in”</h2></div><p>Each stage has a single responsibility. The server remains the source of truth.</p></div>
-      <div className="flow-grid">{flow.map(([number, title, description], index) => <article className={activeStep > index ? "flow-card complete" : "flow-card"} key={number}><div className="flow-number">{activeStep > index ? <Check size={17} /> : number}</div><div><h3>{title}</h3><p>{description}</p></div>{index < flow.length - 1 && <ChevronRight className="flow-arrow" size={18} />}</article>)}</div>
-    </section>
-
-    <section className="token-section">
-      <div className="token-copy"><p className="kicker"><Braces size={15} /> Anatomy of a JWT</p><h2>Three parts. One verifiable identity.</h2><p>The encoded data is readable, not encrypted. Trust comes from the signature, so secrets and passwords never belong in the payload.</p><div className="legend"><span><i className="header-dot" /> Header</span><span><i className="payload-dot" /> Payload</span><span><i className="signature-dot" /> Signature</span></div></div>
-      <div className="token-console"><div className="console-bar"><span /><span /><span /><b>verified-token.jwt</b></div><div className="token-string" aria-label="Example JSON Web Token"><span>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9</span>.<span>eyJzdWIiOiJ1c3JfMTAwMSIsInJvbGUiOiJsZWFybmVyIn0</span>.<span>m7Yw8rAZQvN0N4bK2saPl9KJ8nVw</span></div><dl><div><dt>Algorithm</dt><dd>HS256</dd></div><div><dt>Issuer</dt><dd>token-lab</dd></div><div><dt>Audience</dt><dd>token-lab-client</dd></div><div><dt>Lifetime</dt><dd>{remember ? "7 days" : "15 minutes"}</dd></div></dl></div>
-    </section>
-
-    {authenticated && session.claims && <section className="claims-section"><div className="section-heading"><div><p className="kicker">Decoded safely</p><h2>Current token claims</h2></div><p>Returned only after server-side signature validation.</p></div><div className="claims-grid"><div><span>Subject</span><strong>{session.claims.sub}</strong></div><div><span>Role</span><strong>{session.claims.role}</strong></div><div><span>Issued at</span><strong>{time(session.claims.iat)}</strong></div><div><span>Expires</span><strong>{time(session.claims.exp)}</strong></div></div></section>}
-    <footer><span><ShieldCheck size={16} /> TokenLab</span><p>Built for learning. Mock credentials only—never reuse them in production.</p></footer>
+      <label className="field"><span>Email</span><div><Search size={17} /><input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="username" required /></div></label>
+      <label className="field"><span>Password</span><div><KeyRound size={17} /><input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" required /></div></label>
+      {error && <p className="form-error" role="alert"><CircleAlert size={16} />{error}</p>}
+      <Button className="submit-button" size="lg" disabled={busy}>{busy ? "Verifying access…" : "Enter workspace"}<ChevronRight /></Button>
+      <p className="credential-note">Demo credentials are filled automatically when you select a role.</p>
+    </form></section>
   </main>;
+}
+
+function ProtectedRoute({ user, permission, children }: { user: User; permission: Permission; children: ReactNode }) {
+  const location = useLocation();
+  if (!can(user.role, permission)) return <Navigate to="/unauthorized" replace state={{ from: location.pathname, permission }} />;
+  return children;
+}
+
+function Shell({ user, onLogout }: { user: User; onLogout: () => Promise<void> }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  return <div className="app-shell">
+    <aside className={menuOpen ? "sidebar open" : "sidebar"}>
+      <div className="sidebar-head"><a className="wordmark light" href="#/dashboard"><span><ShieldCheck size={20} /></span> AccessGrid</a><button className="close-menu" onClick={() => setMenuOpen(false)} aria-label="Close menu"><X /></button></div>
+      <nav aria-label="Workspace"><p>Workspace</p>{navigation.filter((item) => can(user.role, item.permission)).map((item) => { const Icon = item.icon; return <NavLink key={item.to} to={item.to} onClick={() => setMenuOpen(false)} className={({ isActive }) => isActive ? "active" : ""}><Icon />{item.label}<ChevronRight /></NavLink>; })}</nav>
+      <div className="scope-card"><p>Current access scope</p><strong>{roleLabels[user.role]}</strong><span>{rolePermissions[user.role].length} of 8 permissions granted</span><div className="scope-meter"><i style={{ width: `${rolePermissions[user.role].length / 8 * 100}%` }} /></div></div>
+      <button className="sidebar-user" onClick={onLogout}><Avatar><AvatarFallback>{initials(user.name)}</AvatarFallback></Avatar><span><strong>{user.name}</strong><small>{user.email}</small></span><LogOut /></button>
+    </aside>
+    {menuOpen && <button className="menu-scrim" onClick={() => setMenuOpen(false)} aria-label="Close menu" />}
+    <div className="app-main"><header className="app-topbar"><button className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Open menu"><Menu /></button><div><span className="status-pulse" /> Policy engine online</div><Badge variant="outline" className={`role-badge ${user.role}`}>{roleLabels[user.role]}</Badge></header>
+      <Routes>
+        <Route path="/dashboard" element={<ProtectedRoute user={user} permission="dashboard.view"><Dashboard user={user} /></ProtectedRoute>} />
+        <Route path="/content" element={<ProtectedRoute user={user} permission="content.view"><ContentPage user={user} /></ProtectedRoute>} />
+        <Route path="/users" element={<ProtectedRoute user={user} permission="users.view"><UsersPage user={user} /></ProtectedRoute>} />
+        <Route path="/analytics" element={<ProtectedRoute user={user} permission="analytics.view"><AnalyticsPage /></ProtectedRoute>} />
+        <Route path="/unauthorized" element={<Unauthorized user={user} />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </div>
+  </div>;
+}
+
+function PageTitle({ eyebrow, title, copy, action }: { eyebrow: string; title: string; copy: string; action?: ReactNode }) {
+  return <div className="page-title"><div><p className="eyebrow dark">{eyebrow}</p><h1>{title}</h1><p>{copy}</p></div>{action}</div>;
+}
+
+function PermissionTest({ user, permission, label }: { user: User; permission: Permission; label: string }) {
+  const [result, setResult] = useState<{ status: number; message: string } | null>(null);
+  const test = async () => {
+    const response = await fetch("/api/protected", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ permission }) });
+    const data = await response.json() as { message?: string; error?: string };
+    setResult({ status: response.status, message: data.message || data.error || "No response" });
+  };
+  return <div className="permission-test"><div><span className={can(user.role, permission) ? "decision allow" : "decision deny"}>{can(user.role, permission) ? "ALLOW" : "DENY"}</span><strong>{label}</strong><code>{permission}</code></div><Button variant="outline" onClick={test}>Test API</Button>{result && <p className={result.status === 200 ? "test-result success" : "test-result denied"}><b>{result.status}</b> {result.message}</p>}</div>;
+}
+
+function Dashboard({ user }: { user: User }) {
+  const granted = rolePermissions[user.role].length;
+  return <main className="page"><PageTitle eyebrow="Access overview" title={`Good morning, ${user.name.split(" ")[0]}.`} copy="Your workspace is filtered by the permissions attached to your current role." />
+    <section className="stat-grid"><Card><CardContent><span className="stat-icon teal"><ShieldCheck /></span><div><small>Permissions granted</small><strong>{granted}<i>/ 8</i></strong><p>Calculated from {roleLabels[user.role]}</p></div></CardContent></Card><Card><CardContent><span className="stat-icon amber"><KeyRound /></span><div><small>Protected routes</small><strong>{navigation.filter((item) => can(user.role, item.permission)).length}<i>/ 4</i></strong><p>Visible in your navigation</p></div></CardContent></Card><Card><CardContent><span className="stat-icon blue"><Sparkles /></span><div><small>Policy status</small><strong className="word-status">Enforced</strong><p>Server checks every action</p></div></CardContent></Card></section>
+    <section className="dashboard-grid"><div className="panel matrix-panel"><div className="panel-heading"><div><h2>Permission matrix</h2><p>What each role can do across the application.</p></div><Badge variant="secondary">Live policy</Badge></div><div className="matrix"><div className="matrix-head"><span>Capability</span><span>Admin</span><span>Editor</span><span>Viewer</span></div>{(["users.manage", "content.create", "content.edit", "content.publish", "analytics.view"] as Permission[]).map((permission) => <div className="matrix-row" key={permission}><span>{permission.split(".").map((part) => part[0].toUpperCase() + part.slice(1)).join(" · ")}</span>{(["admin", "editor", "viewer"] as Role[]).map((role) => <span key={role}>{can(role, permission) ? <i className="matrix-yes"><Check /></i> : <i className="matrix-no">—</i>}</span>)}</div>)}</div></div>
+      <div className="panel tests-panel"><div className="panel-heading"><div><h2>Try a decision</h2><p>Send a permission to the protected API.</p></div></div><PermissionTest user={user} permission="content.publish" label="Publish content" /><PermissionTest user={user} permission="users.manage" label="Manage users" /></div></section>
+  </main>;
+}
+
+function ContentPage({ user }: { user: User }) {
+  const items = [["Q3 product update", "Draft", "Maya Chen", "14 Sep 2026"], ["Editor onboarding guide", "Published", "Jordan Lee", "12 Sep 2026"], ["Security checklist", "Review", "Jordan Lee", "09 Sep 2026"]];
+  return <main className="page"><PageTitle eyebrow="Content library" title="Content" copy="Browse the library. Editing controls only appear when your role permits them." action={can(user.role, "content.create") ? <Button><Plus /> New content</Button> : undefined} />
+    <div className="panel table-panel"><div className="content-table"><div className="content-row table-head"><span>Document</span><span>Status</span><span>Owner</span><span>Updated</span><span>Actions</span></div>{items.map(([title, status, owner, date]) => <div className="content-row" key={title}><span><i><FileText /></i><strong>{title}</strong></span><span><Badge variant={status === "Published" ? "default" : "secondary"}>{status}</Badge></span><span>{owner}</span><span>{date}</span><span>{can(user.role, "content.edit") ? <Button variant="ghost" size="sm"><FilePenLine /> Edit</Button> : <small>View only</small>}</span></div>)}</div></div>
+    <div className="permission-note"><ShieldCheck /><div><strong>UI permission check</strong><p>The “New content” and “Edit” actions render only for roles with <code>content.create</code> or <code>content.edit</code>.</p></div></div>
+  </main>;
+}
+
+function UsersPage({ user }: { user: User }) {
+  const people = [["Maya Chen", "admin", "Full access"], ["Jordan Lee", "editor", "Content workflow"], ["Sam Rivera", "viewer", "Read only"]] as [string, Role, string][];
+  return <main className="page"><PageTitle eyebrow="Administration" title="Team access" copy="Assign roles and review the access scope for each workspace member." action={can(user.role, "users.manage") ? <Button><UserCog /> Manage roles</Button> : undefined} /><div className="team-grid">{people.map(([name, role, scope]) => <Card key={name}><CardContent><Avatar size="lg"><AvatarFallback>{initials(name)}</AvatarFallback></Avatar><div><strong>{name}</strong><span>{scope}</span></div><Badge variant="outline" className={`role-badge ${role}`}>{roleLabels[role]}</Badge></CardContent></Card>)}</div><PermissionTest user={user} permission="users.manage" label="Update a team member role" /></main>;
+}
+
+function AnalyticsPage() {
+  return <main className="page"><PageTitle eyebrow="Visibility" title="Analytics" copy="A shared read-only route available to every role." /><div className="analytics-panel"><div className="analytics-copy"><Badge variant="secondary">Last 7 days</Badge><h2>1,284 authorized requests</h2><p>98.7% of requests matched an explicit permission. Denied requests are preserved in the audit trail.</p><div className="analytics-legend"><span><i /> Allowed · 1,267</span><span><i /> Denied · 17</span></div></div><div className="bar-chart" aria-label="Authorized requests over seven days">{[52, 68, 61, 78, 72, 90, 84].map((height, index) => <div key={index}><span style={{ height: `${height}%` }} /><small>{["M", "T", "W", "T", "F", "S", "S"][index]}</small></div>)}</div></div></main>;
+}
+
+function Unauthorized({ user }: { user: User }) {
+  const location = useLocation();
+  const state = location.state as { permission?: Permission } | null;
+  return <main className="page denied-page"><div className="denied-card"><span><LockKeyhole /></span><p className="eyebrow dark">403 · Access denied</p><h1>This route is outside your role.</h1><p><strong>{roleLabels[user.role]}</strong> does not include {state?.permission ? <code>{state.permission}</code> : "the required permission"}. Your session is valid, but the authorization policy blocked the request.</p><Button asChild><NavLink to="/dashboard">Return to overview</NavLink></Button></div></main>;
+}
+
+function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const refresh = useCallback(async () => {
+    try { const response = await fetch("/api/auth/me", { cache: "no-store" }); const data = await response.json() as Session; setSession(response.ok ? data : { authenticated: false }); }
+    catch { setSession({ authenticated: false }); }
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+  const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); setSession({ authenticated: false }); };
+  const authenticated = session?.authenticated === true && !!session.user;
+  if (session === null) return <div className="boot-screen"><ShieldCheck /><span>Loading access policy…</span></div>;
+  return <Routes><Route path="/login" element={authenticated ? <Navigate to="/dashboard" replace /> : <Login onLogin={(user) => setSession({ authenticated: true, user })} />} /><Route path="/*" element={authenticated && session.user ? <Shell user={session.user} onLogout={logout} /> : <Navigate to="/login" replace />} /></Routes>;
+}
+
+export default function Home() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return <div className="boot-screen"><ShieldCheck /><span>Loading access policy…</span></div>;
+  return <HashRouter><App /></HashRouter>;
 }

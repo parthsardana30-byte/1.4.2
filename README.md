@@ -1,33 +1,35 @@
-# TokenLab — JWT authentication demo
+# AccessGrid — RBAC Console
 
-TokenLab is a React/Next.js teaching project that demonstrates credential validation, JWT creation, secure browser storage, claim verification, protected API access, expiry, and logout.
+AccessGrid is a React/Next.js teaching project for role-based access control. It demonstrates JWT authentication, protected React Router views, centralized role permissions, permission-aware UI, and server-side authorization with clear `401` and `403` responses.
+
+## Version
+
+`1.3.2`
 
 ## Run locally
 
 ```bash
+npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` and use:
+Open `http://localhost:5173` and select a demo role. Credentials are filled automatically:
 
-- Email: `learner@example.com`
-- Password: `SecurePass123!`
+- Administrator: `admin@accessgrid.dev` / `Admin123!`
+- Content editor: `editor@accessgrid.dev` / `Editor123!`
+- Read-only viewer: `viewer@accessgrid.dev` / `Viewer123!`
 
-Local development uses a scoped fallback signing secret. For deployment, set `JWT_SECRET` to a random value of at least 32 characters; see `.env.example`.
+## RBAC model
 
-## Security choices
+- **Admin** — full access, including team and role management.
+- **Editor** — view, create, edit, and publish content.
+- **Viewer** — read-only access to content and analytics.
 
-- Tokens are signed with HMAC-SHA256 using the Web Crypto API.
-- The JWT is stored in an `HttpOnly`, `SameSite=Strict` cookie instead of `localStorage`, preventing page scripts from reading it and reducing XSS exposure.
-- Protected endpoints validate the signature, algorithm, issuer, audience, issue time, and expiry.
-- Passwords are never included in JWT claims.
-- Logout invalidates the browser cookie.
+Roles and permissions are defined in `lib/rbac.ts`. Client-side route guards improve the experience, while the protected API repeats authorization checks on the server so hidden UI is never treated as the security boundary.
 
-A production system should additionally use database-backed users with hashed passwords, rate limiting, short-lived access tokens, refresh-token rotation, and server-side revocation for high-risk sessions.
+## Security notes
 
-## API routes
-
-- `POST /api/auth/login` — validates the mock account and issues the JWT cookie.
-- `GET /api/auth/me` — verifies the cookie and returns safe user/claim data.
-- `POST /api/auth/logout` — expires the cookie.
-- `GET /api/protected` — returns data only after successful token verification.
+- JWTs are signed with HMAC-SHA256 using the Web Crypto API.
+- Tokens are stored in `HttpOnly`, `SameSite=Strict` cookies.
+- Protected endpoints validate the signature, algorithm, issuer, audience, issue time, expiry, role, and requested permission.
+- Demo passwords are for teaching only. Production systems should use hashed credentials, persistent users, rate limiting, token rotation, and revocation.

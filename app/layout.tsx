@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TokenLab — JWT Authentication Demo",
-  description: "A secure, hands-on demonstration of JWT login, signed claims, session cookies, and protected API routes.",
+  title: "AccessGrid — RBAC Console",
+  description: "A hands-on role-based access control console with protected routes, permission-aware actions, and server-side authorization.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

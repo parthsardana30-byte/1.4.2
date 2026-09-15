@@ -1,8 +1,10 @@
+import type { Role } from "@/lib/rbac";
+
 const encoder = new TextEncoder();
 const issuer = "token-lab";
 const audience = "token-lab-client";
 
-export type JwtClaims = { sub: string; email: string; name: string; role: string; iat: number; exp: number; iss: string; aud: string; jti: string };
+export type JwtClaims = { sub: string; email: string; name: string; role: Role; iat: number; exp: number; iss: string; aud: string; jti: string };
 
 function base64UrlEncode(value: Uint8Array | string): string {
   const bytes = typeof value === "string" ? encoder.encode(value) : value;
@@ -27,7 +29,7 @@ async function signingKey() {
   return crypto.subtle.importKey("raw", encoder.encode(getSecret()), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
 
-export async function createToken(user: { id: string; email: string; name: string; role: string }, lifetimeSeconds: number): Promise<string> {
+export async function createToken(user: { id: string; email: string; name: string; role: Role }, lifetimeSeconds: number): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = base64UrlEncode(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const payload: JwtClaims = { sub: user.id, email: user.email, name: user.name, role: user.role, iat: now, exp: now + lifetimeSeconds, iss: issuer, aud: audience, jti: crypto.randomUUID() };
